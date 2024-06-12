@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
         // load model
         VlyObject model = null;
         try {
-            model = new VlyObject(this.getAssets().open("simple.vly"));
+            model = new VlyObject(this.getAssets().open("chrk.vly"));
             model.parse();
         } catch (IOException e) {
             e.printStackTrace();
