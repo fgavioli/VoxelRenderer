@@ -183,7 +183,6 @@ public class DepthTestRenderer extends BasicRenderer {
         colorLoc = glGetUniformLocation(shaderHandle, "colorUni");
 
         glDepthFunc(GL_LEQUAL);
-
     }
 
     @Override

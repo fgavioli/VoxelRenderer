@@ -9,17 +9,21 @@ import static android.opengl.GLES20.glClear;
 import static android.opengl.GLES20.glGenBuffers;
 import static android.opengl.GLES20.glUseProgram;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.opengl.GLES20;
 import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
 import android.util.Log;
+import android.view.MotionEvent;
+import android.view.View;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
+import java.util.Arrays;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
@@ -52,6 +56,7 @@ import static android.opengl.GLES20.glUniformMatrix4fv;
 import static android.opengl.GLES20.glUseProgram;
 import static android.opengl.GLES20.glVertexAttribPointer;
 import static android.opengl.GLES30.glVertexAttribDivisor;
+import static java.lang.Float.max;
 
 
 public class VoxelRenderer extends BasicRenderer {
@@ -97,6 +102,8 @@ public class VoxelRenderer extends BasicRenderer {
     private float MVP[][];
 
     private VlyObject obj;
+    private float[] modelCenter;
+    private int modelRotDeg;
 
     public VoxelRenderer(VlyObject obj) {
         super(0.25f, 0.25f, 0.25f, 1);
@@ -108,27 +115,65 @@ public class VoxelRenderer extends BasicRenderer {
         MVP = new float[obj.getVoxelCount()][16];
         Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(projM, 0);
-        for (int i = 0; i < obj.getVoxelCount(); i++)
+
+        float[][] voxelPoses = obj.getVoxelPoses();
+
+        float[] min = Arrays.copyOf(voxelPoses[0], voxelPoses[0].length);
+        float[] max = Arrays.copyOf(voxelPoses[0], voxelPoses[0].length);
+        for (int i = 1; i < obj.getVoxelCount(); i++) {
+            for (int j = 0; j < 3; j++) {
+                min[j] = Math.min(voxelPoses[i][j], min[j]);
+                max[j] = Math.max(voxelPoses[i][j], max[j]);
+            }
+        }
+
+        // calculate model center
+        modelCenter = new float[3];
+        for (int j = 0; j < 3; j++) {
+            modelCenter[j] = (min[j] + max[j]) / 2.0f;
+        }
+
+        for (int i = 0; i < obj.getVoxelCount(); i++) {
             Matrix.setIdentityM(modelM[i], 0);
+            Matrix.translateM(modelM[i], 0,
+                    voxelPoses[i][0] - modelCenter[0],
+                    voxelPoses[i][1] - modelCenter[1],
+                    voxelPoses[i][2] - modelCenter[2]);
+            Matrix.rotateM(//TODO: ROT);
+        }
+
         generateMVPMatrices();
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     @Override
     public void setContextAndSurface(Context context, GLSurfaceView surface) {
         super.setContextAndSurface(context, surface);
 
         // TODO: add here the movement listener to change perspective
+        this.surface.setOnTouchListener(new View.OnTouchListener() {
+            @SuppressLint("ClickableViewAccessibility")
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    float xPerc = event.getX() / v.getWidth();
+                    if (xPerc > 0.8)
+                        modelRotDeg += 15; // rotate right
+                    else if (xPerc < 0.2)
+                        modelRotDeg -= 15; // rotate left
+                    // regen MVP matrices for the voxels
+                    generateMVPMatrices();
+                }
+                return true;
+            }
+        });
     }
 
     private void generateMVPMatrices() {
         float[][] voxelPoses = obj.getVoxelPoses();
         for (int i = 0; i < voxelPoses.length; i++) {
-            float[] model = new float[16];
-            Matrix.setIdentityM(model, 0);
-            Matrix.translateM(model, 0, voxelPoses[i][0], voxelPoses[i][1], voxelPoses[i][2]);
-
             float[] tempM = new float[16];
-            Matrix.multiplyMM(tempM, 0, viewM, 0, model, 0);
+            Matrix.multiplyMM(tempM, 0, viewM, 0, modelM[i], 0);
             Matrix.multiplyMM(MVP[i], 0, projM, 0, tempM, 0);
         }
     }
@@ -137,10 +182,18 @@ public class VoxelRenderer extends BasicRenderer {
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
         float aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
+        float fovVertical = 45f;
+        float fovHorizontal = (float) (2.0 * (1 / Math.tan(Math.tan(fovVertical / 2) * aspect)));
 
-        Matrix.perspectiveM(projM, 0, 90f, aspect, 0.1f, 1000f);
-        Matrix.setLookAtM(viewM, 0, 0f, 0f, 300f,
-                0, 0, 0,
+        float maxHorizontalSize = Float.max(modelCenter[0], modelCenter[2]);
+        float cameraDistance = (maxHorizontalSize) /
+                (2 * (float)(Math.tan((fovHorizontal * Math.PI / 180) / 2)));
+        float zNear = cameraDistance - maxHorizontalSize;
+        float zFar = cameraDistance + maxHorizontalSize;
+
+        Matrix.perspectiveM(projM, 0, fovVertical, aspect, zNear, zFar);
+        Matrix.setLookAtM(viewM, 0, 0f, 0f, cameraDistance,
+                0f, 0f, 0f,
                 0, 1, 0);
         generateMVPMatrices();
     }
