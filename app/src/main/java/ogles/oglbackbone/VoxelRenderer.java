@@ -133,16 +133,7 @@ public class VoxelRenderer extends BasicRenderer {
             modelCenter[j] = (min[j] + max[j]) / 2.0f;
         }
 
-        for (int i = 0; i < obj.getVoxelCount(); i++) {
-            Matrix.setIdentityM(modelM[i], 0);
-            Matrix.translateM(modelM[i], 0,
-                    voxelPoses[i][0] - modelCenter[0],
-                    voxelPoses[i][1] - modelCenter[1],
-                    voxelPoses[i][2] - modelCenter[2]);
-            Matrix.rotateM(//TODO: ROT);
-        }
-
-        generateMVPMatrices();
+//        generateMVPMatrices();
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -157,12 +148,13 @@ public class VoxelRenderer extends BasicRenderer {
             public boolean onTouch(View v, MotionEvent event) {
                 if (event.getAction() == MotionEvent.ACTION_UP) {
                     float xPerc = event.getX() / v.getWidth();
-                    if (xPerc > 0.8)
+                    if (xPerc > 0.75)
                         modelRotDeg += 15; // rotate right
-                    else if (xPerc < 0.2)
+                    else if (xPerc < 0.25)
                         modelRotDeg -= 15; // rotate left
+                    Log.v("ROTATOR", "Rotation: " + modelRotDeg);
                     // regen MVP matrices for the voxels
-                    generateMVPMatrices();
+//                    generateMVPMatrices();
                 }
                 return true;
             }
@@ -171,6 +163,16 @@ public class VoxelRenderer extends BasicRenderer {
 
     private void generateMVPMatrices() {
         float[][] voxelPoses = obj.getVoxelPoses();
+        // https://bobobobo.wordpress.com/2011/12/20/rotation-translation-vs-translation-rotation/
+        for (int i = 0; i < voxelPoses.length; i++) {
+            Matrix.setIdentityM(modelM[i], 0);
+            Matrix.rotateM(modelM[i], 0, modelRotDeg, 0, 1, 0);
+            Matrix.translateM(modelM[i], 0,
+                    voxelPoses[i][0] - modelCenter[0],
+                    voxelPoses[i][1] - modelCenter[1],
+                    voxelPoses[i][2] - modelCenter[2]);
+        }
+
         for (int i = 0; i < voxelPoses.length; i++) {
             float[] tempM = new float[16];
             Matrix.multiplyMM(tempM, 0, viewM, 0, modelM[i], 0);
@@ -195,7 +197,7 @@ public class VoxelRenderer extends BasicRenderer {
         Matrix.setLookAtM(viewM, 0, 0f, 0f, cameraDistance,
                 0f, 0f, 0f,
                 0, 1, 0);
-        generateMVPMatrices();
+//        generateMVPMatrices();
     }
 
     @Override
@@ -294,6 +296,7 @@ public class VoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(VAO[0]);
 
         // generate MVP buffer
+        generateMVPMatrices();
         FloatBuffer MVPBuffer =
                 ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
                         .order(ByteOrder.nativeOrder())

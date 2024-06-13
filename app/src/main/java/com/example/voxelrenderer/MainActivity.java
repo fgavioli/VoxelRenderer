@@ -61,7 +61,7 @@ public class MainActivity extends Activity {
         // load model
         VlyObject model = null;
         try {
-            model = new VlyObject(this.getAssets().open("christmas.vly"));
+            model = new VlyObject(this.getAssets().open("dragon.vly"));
             model.parse();
         } catch (IOException e) {
             e.printStackTrace();
@@ -76,8 +76,6 @@ public class MainActivity extends Activity {
         renderer.setContextAndSurface(this,surface);
         surface.setRenderer(renderer);
         isSurfaceCreated = true;
-
-        //Log.v("TAG",getWindow().getDecorView().findViewById(android.R.id.content).toString());
     }
 
     @Override
