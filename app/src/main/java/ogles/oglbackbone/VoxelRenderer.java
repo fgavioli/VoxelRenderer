@@ -1,7 +1,5 @@
 package ogles.oglbackbone;
 
-import static android.opengl.GLES20.GL_FRONT_AND_BACK;
-import static android.opengl.GLES20.GL_GEQUAL;
 import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
 import static android.opengl.GLES20.GL_DEPTH_BUFFER_BIT;
@@ -32,31 +30,23 @@ import ogles.oglbackbone.utils.ShaderCompiler;
 import ogles.oglbackbone.utils.VlyObject;
 
 import static android.opengl.GLES20.GL_ARRAY_BUFFER;
-import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
-import static android.opengl.GLES20.GL_DEPTH_BUFFER_BIT;
-import static android.opengl.GLES20.GL_DEPTH_TEST;
 import static android.opengl.GLES20.GL_ELEMENT_ARRAY_BUFFER;
 import static android.opengl.GLES20.GL_FLOAT;
 import static android.opengl.GLES20.GL_LEQUAL;
 import static android.opengl.GLES20.GL_STATIC_DRAW;
-import static android.opengl.GLES20.GL_TRIANGLES;
-import static android.opengl.GLES20.GL_UNSIGNED_INT;
 import static android.opengl.GLES20.glBindBuffer;
 import static android.opengl.GLES20.glBufferData;
-import static android.opengl.GLES20.glClear;
 import static android.opengl.GLES20.glDepthFunc;
-import static android.opengl.GLES20.glDisable;
 import static android.opengl.GLES20.glDrawElements;
-import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.glEnableVertexAttribArray;
 import static android.opengl.GLES20.glGenBuffers;
 import static android.opengl.GLES20.glGetUniformLocation;
-import static android.opengl.GLES20.glUniform3f;
 import static android.opengl.GLES20.glUniformMatrix4fv;
-import static android.opengl.GLES20.glUseProgram;
 import static android.opengl.GLES20.glVertexAttribPointer;
 import static android.opengl.GLES30.glVertexAttribDivisor;
-import static java.lang.Float.max;
+import static java.lang.Math.cos;
+import static java.lang.Math.sin;
+import static java.lang.Math.toRadians;
 
 
 public class VoxelRenderer extends BasicRenderer {
@@ -103,7 +93,9 @@ public class VoxelRenderer extends BasicRenderer {
 
     private VlyObject obj;
     private float[] modelCenter;
-    private int modelRotDeg;
+    private int viewRotDeg;
+    private boolean MVPRegen;
+    private float cameraDistance;
 
     public VoxelRenderer(VlyObject obj) {
         super(0.25f, 0.25f, 0.25f, 1);
@@ -133,7 +125,17 @@ public class VoxelRenderer extends BasicRenderer {
             modelCenter[j] = (min[j] + max[j]) / 2.0f;
         }
 
-//        generateMVPMatrices();
+        // precompute model matrices
+        for (int i = 0; i < voxelPoses.length; i++) {
+            Matrix.setIdentityM(modelM[i], 0);
+            Matrix.translateM(modelM[i], 0,
+                    voxelPoses[i][0] - modelCenter[0],
+                    voxelPoses[i][1] - modelCenter[1],
+                    voxelPoses[i][2] - modelCenter[2]);
+        }
+
+        viewRotDeg = 0;
+        MVPRegen = true;
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -149,12 +151,12 @@ public class VoxelRenderer extends BasicRenderer {
                 if (event.getAction() == MotionEvent.ACTION_UP) {
                     float xPerc = event.getX() / v.getWidth();
                     if (xPerc > 0.75)
-                        modelRotDeg += 15; // rotate right
+                        viewRotDeg = (viewRotDeg + 15) % 360;
                     else if (xPerc < 0.25)
-                        modelRotDeg -= 15; // rotate left
-                    Log.v("ROTATOR", "Rotation: " + modelRotDeg);
+                        viewRotDeg = (viewRotDeg - 15) % 360;
+                    Log.v("ROTATOR", "Rotation: " + viewRotDeg);
                     // regen MVP matrices for the voxels
-//                    generateMVPMatrices();
+                    MVPRegen = true;
                 }
                 return true;
             }
@@ -163,15 +165,13 @@ public class VoxelRenderer extends BasicRenderer {
 
     private void generateMVPMatrices() {
         float[][] voxelPoses = obj.getVoxelPoses();
-        // https://bobobobo.wordpress.com/2011/12/20/rotation-translation-vs-translation-rotation/
-        for (int i = 0; i < voxelPoses.length; i++) {
-            Matrix.setIdentityM(modelM[i], 0);
-            Matrix.rotateM(modelM[i], 0, modelRotDeg, 0, 1, 0);
-            Matrix.translateM(modelM[i], 0,
-                    voxelPoses[i][0] - modelCenter[0],
-                    voxelPoses[i][1] - modelCenter[1],
-                    voxelPoses[i][2] - modelCenter[2]);
-        }
+
+        float eyeX = (float) (cameraDistance * sin(toRadians(viewRotDeg)));
+        float eyeZ = (float) (cameraDistance * cos(toRadians(viewRotDeg)));
+
+        Matrix.setLookAtM(viewM, 0, eyeX, 0f, eyeZ,
+                0f, 0f, 0f,
+                0, 1, 0);
 
         for (int i = 0; i < voxelPoses.length; i++) {
             float[] tempM = new float[16];
@@ -188,16 +188,13 @@ public class VoxelRenderer extends BasicRenderer {
         float fovHorizontal = (float) (2.0 * (1 / Math.tan(Math.tan(fovVertical / 2) * aspect)));
 
         float maxHorizontalSize = Float.max(modelCenter[0], modelCenter[2]);
-        float cameraDistance = (maxHorizontalSize) /
+        cameraDistance = (maxHorizontalSize) /
                 (2 * (float)(Math.tan((fovHorizontal * Math.PI / 180) / 2)));
         float zNear = cameraDistance - maxHorizontalSize;
         float zFar = cameraDistance + maxHorizontalSize;
 
         Matrix.perspectiveM(projM, 0, fovVertical, aspect, zNear, zFar);
-        Matrix.setLookAtM(viewM, 0, 0f, 0f, cameraDistance,
-                0f, 0f, 0f,
-                0, 1, 0);
-//        generateMVPMatrices();
+        MVPRegen = true;
     }
 
     @Override
@@ -296,7 +293,11 @@ public class VoxelRenderer extends BasicRenderer {
         GLES30.glBindVertexArray(VAO[0]);
 
         // generate MVP buffer
-        generateMVPMatrices();
+        if (MVPRegen) {
+            Log.v("MVP", "Refreshing MVP matrices...");
+            generateMVPMatrices();
+            MVPRegen = false;
+        }
         FloatBuffer MVPBuffer =
                 ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
                         .order(ByteOrder.nativeOrder())
