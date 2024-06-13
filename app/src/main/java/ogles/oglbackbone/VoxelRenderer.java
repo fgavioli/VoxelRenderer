@@ -1,5 +1,6 @@
 package ogles.oglbackbone;
 
+import static android.opengl.GLES20.GL_FRONT_AND_BACK;
 import static android.opengl.GLES20.GL_GEQUAL;
 import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
@@ -137,8 +138,8 @@ public class VoxelRenderer extends BasicRenderer {
         super.onSurfaceChanged(gl10, w, h);
         float aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
 
-        Matrix.perspectiveM(projM, 0, 45f, aspect, 0.1f, 100f);
-        Matrix.setLookAtM(viewM, 0, -50f, -50f, 0f,
+        Matrix.perspectiveM(projM, 0, 90f, aspect, 0.1f, 1000f);
+        Matrix.setLookAtM(viewM, 0, 0f, 0f, 300f,
                 0, 0, 0,
                 0, 1, 0);
         generateMVPMatrices();
@@ -199,16 +200,6 @@ public class VoxelRenderer extends BasicRenderer {
         colorBuffer.put(obj.getVoxelColors());
         colorBuffer.position(0);
 
-        // generate MVP buffer
-        FloatBuffer MVPBuffer =
-                ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
-                        .order(ByteOrder.nativeOrder())
-                        .asFloatBuffer();
-        for (int i = 0; i < obj.getVoxelCount(); i++) {
-            MVPBuffer.put(MVP[i]);
-        }
-        MVPBuffer.position(0);
-
         VBO = new int[4]; //0: vPos, 1: vIndices, 2: vColor, 3: iMVP
         glGenBuffers(4, VBO, 0);
 
@@ -233,18 +224,6 @@ public class VoxelRenderer extends BasicRenderer {
         glEnableVertexAttribArray(2);
         // Set the attribute divisor to change color every instance
         glVertexAttribDivisor(2, 1);
-
-        // bind MVP buffer
-        glBindBuffer(GL_ARRAY_BUFFER, VBO[3]);
-        glBufferData(GL_ARRAY_BUFFER, MVPBuffer.capacity(), MVPBuffer, GL_STATIC_DRAW);
-        // pass 4x4 mat to attrib.
-        // Src: https://stackoverflow.com/questions/28595598/glm-mat4x4-to-layout-qualifier
-        for (int i = 0; i < 4; i++) {
-            glEnableVertexAttribArray(3 + i);
-            glVertexAttribPointer(3 + i, 4, GL_FLOAT, false, 16 * 4, i * 16);
-            glVertexAttribDivisor(3 + i, 1);
-        }
-
         GLES30.glBindVertexArray(0);
 
         colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
@@ -261,8 +240,26 @@ public class VoxelRenderer extends BasicRenderer {
 
         GLES30.glBindVertexArray(VAO[0]);
 
-        // Generate MVP matrices
-        // TODO: precompute mv matrix and calc only MV * P on the fly
+        // generate MVP buffer
+        FloatBuffer MVPBuffer =
+                ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
+                        .order(ByteOrder.nativeOrder())
+                        .asFloatBuffer();
+        for (int i = 0; i < obj.getVoxelCount(); i++) {
+            MVPBuffer.put(MVP[i]);
+        }
+        MVPBuffer.position(0);
+
+        // bind MVP buffer
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[3]);
+        glBufferData(GL_ARRAY_BUFFER, MVPBuffer.capacity() * 4, MVPBuffer, GL_STATIC_DRAW);
+        // pass 4x4 mat to attrib.
+        // Src: https://stackoverflow.com/questions/28595598/glm-mat4x4-to-layout-qualifier
+        for (int i = 0; i < 4; i++) {
+            glEnableVertexAttribArray(3 + i);
+            glVertexAttribPointer(3 + i, 4, GL_FLOAT, false, 16 * 4, i * 16);
+            glVertexAttribDivisor(3 + i, 1);
+        }
 
         GLES30.glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
 
