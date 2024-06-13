@@ -84,8 +84,7 @@ public class VoxelRenderer extends BasicRenderer {
 
     private int shaderHandle;
 
-    private int MVPloc;
-    private int colorLoc;
+    private int MVPloc, colorTableloc;
 
     private int VAO[];
 
@@ -150,25 +149,30 @@ public class VoxelRenderer extends BasicRenderer {
         String vertexSrc = "#version 300 es\n" +
                 "\n" +
                 "layout(location = 1) in vec3 vPos;\n" +
+                "layout(location = 2) in int vColor;\n" +
                 "uniform mat4 mvpMatrices[1000];\n" +
+                "flat out int voxelColor;\n" +
                 "\n" +
                 "void main() {\n" +
                 "    gl_Position = mvpMatrices[gl_InstanceID] * vec4(vPos, 1.0);\n" +
+                "    voxelColor = vColor;\n" +
                 "}";
         String fragmentSrc = "#version 300 es\n" +
                 "\n" +
                 "precision mediump float;\n" +
                 "\n" +
-                "uniform vec3 colorUni;\n" +
-                "out vec4 fragColor;\n" +
+                "flat in int voxelColor;\n" +
+                "uniform vec3 colorTable[" + obj.getColorCount() + "];\n" +
+                "out vec4 colorOut;\n" +
                 "\n" +
                 "void main() {\n" +
-                "fragColor = vec4(colorUni,1);\n" +
+                "    colorOut = vec4(colorTable[voxelColor], 1);\n" +
                 "}\n";
 
         shaderHandle = ShaderCompiler.createProgram(vertexSrc, fragmentSrc);
 
         VAO = new int[1]; // one VAO for vPos
+        GLES30.glGenVertexArrays(1, VAO, 0);
 
         // generate vertex buffer
         FloatBuffer vertexData =
@@ -186,13 +190,18 @@ public class VoxelRenderer extends BasicRenderer {
         indexData.put(voxelIndices);
         indexData.position(0);
 
-        int VBO[] = new int[2]; //0: vPos, 1: faces
+        // generate color buffer
+        IntBuffer colorBuffer = ByteBuffer.allocateDirect(obj.getVoxelColors().length * 4)
+                .order(ByteOrder.nativeOrder())
+                .asIntBuffer();
+        colorBuffer.put(obj.getVoxelColors());
+        colorBuffer.position(0);
 
-        GLES30.glGenVertexArrays(1, VAO, 0);
-        glGenBuffers(2, VBO, 0);
+        int VBO[] = new int[3]; //0: vPos, 1: faces
+        glGenBuffers(3, VBO, 0);
 
-        // bind vertices pose buffer
         GLES30.glBindVertexArray(VAO[0]);
+        // bind vertices pose buffer
         glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
         glBufferData(GL_ARRAY_BUFFER, Float.BYTES * vertexData.capacity(),
                 vertexData, GL_STATIC_DRAW);
@@ -204,10 +213,18 @@ public class VoxelRenderer extends BasicRenderer {
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, Integer.BYTES * indexData.capacity(), indexData,
                 GL_STATIC_DRAW);
 
+        // bind colors buffer
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+        glBufferData(GL_ARRAY_BUFFER, colorBuffer.capacity() * 4, colorBuffer, GL_STATIC_DRAW);
+        glVertexAttribPointer(2, 1, GL_FLOAT, false, 0, 0);
+        glEnableVertexAttribArray(2);
+        // Set the attribute divisor to change color for every 12 vertices
+        GLES30.glVertexAttribDivisor(2, 1);
+
         GLES30.glBindVertexArray(0);
 
         MVPloc = glGetUniformLocation(shaderHandle, "mvpMatrices");
-        colorLoc = glGetUniformLocation(shaderHandle, "colorUni");
+        colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
 
         glDepthFunc(GL_LEQUAL);
     }
@@ -225,13 +242,11 @@ public class VoxelRenderer extends BasicRenderer {
             System.arraycopy(MVP[i], 0, mvpMatrixArray, i * 16, 16);
         }
         GLES30.glUniformMatrix4fv(MVPloc, obj.getVoxelCount(), false, mvpMatrixArray, 0);
+        GLES30.glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
 
         // Bind VAO and draw instances
         GLES30.glBindVertexArray(VAO[0]);
         GLES30.glDrawElementsInstanced(GLES30.GL_TRIANGLES, voxelIndices.length, GLES30.GL_UNSIGNED_INT, 0, obj.getVoxelCount());
-
-        // color
-        glUniform3f(colorLoc, 1, 0, 0);
 
         GLES30.glBindVertexArray(0);
         glUseProgram(0);

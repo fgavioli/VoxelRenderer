@@ -1,23 +1,15 @@
 package ogles.oglbackbone.utils;
 
-import android.graphics.Color;
-import android.graphics.ColorSpace;
+import static java.lang.Math.max;
+
 import android.util.Log;
 
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.Vector;
 
 /**
  * This class represents a 3D object represented as a voxel set
@@ -26,6 +18,7 @@ public class VlyObject {
 
     private int[] gridSize;
     private int voxelNum;
+    private int colorNum;
 
     // Represents each voxel pose as a 4d array (x, y, z)
     private float[][] voxel_poses;
@@ -33,8 +26,8 @@ public class VlyObject {
     // Represent each voxel color as an index integer
     private int[] voxel_colors;
 
-    // Associates a color_code to a Color
-    private HashMap<Integer, Color> colorMap;
+    // Associates at each index the corresponding RGB color
+    private float[] colorTable;
 
     // object inputStream, used for parsing
     private InputStream inputStream;
@@ -44,7 +37,7 @@ public class VlyObject {
     public VlyObject(InputStream inputStream){
         this.inputStream = inputStream;
         gridSize = new int[3];
-        colorMap = new HashMap<>();
+        colorTable = null;
     }
 
     public void parse() throws IOException, NumberFormatException {
@@ -84,18 +77,24 @@ public class VlyObject {
                     voxel_colors[voxelIndex] = Integer.parseInt(v[3]);
                     Log.v("VLY_PARSER", "Parsed voxel #" + voxelIndex + " (" + Arrays.toString(voxel_poses[voxelIndex]) + ") - (color: " + voxel_colors[voxelIndex] + ")");
                 } else {
+                    if (colorTable == null)
+                    {
+                        int highest_idx = 0;
+                        for (int i = 0; i < voxelNum; i++)
+                            highest_idx = max(voxel_colors[i], highest_idx);
+                        colorTable = new float[(highest_idx + 1) * 3];
+                        colorNum = 0;
+                    }
                     // parse color row
                     String[] color = s.split(" ");
-                    float[] floatColor = new float[4];
 
                     for (int i = 0; i < 3; i++) {
-                        floatColor[i] = Float.parseFloat(color[i + 1]) / 255;
+                        colorTable[colorNum * 3 + i] = Float.parseFloat(color[i + 1]) / 255;
                     }
-                    floatColor[3] = 1.0f; // alpha channel
-
-                    Color c = Color.valueOf(floatColor, ColorSpace.get(ColorSpace.Named.SRGB));
-                    colorMap.put(Integer.parseInt(color[0]), c);
-                    Log.v("VLY_PARSER", "Parsed color #" + (voxelIndex - voxelNum) + " - " + c);
+                    Log.v("VLY_PARSER", "Parsed color #" + (voxelIndex - voxelNum) + " - " + colorTable[colorNum * 3]
+                            + ", " + colorTable[colorNum * 3 + 1]
+                            + ", " + colorTable[colorNum * 3 + 2]);
+                    colorNum++;
                 }
                 voxelIndex++;
             }
@@ -121,8 +120,11 @@ public class VlyObject {
             out.append("\n");
         }
         out.append("Colors:\n");
-        for (Map.Entry<Integer, Color> e : colorMap.entrySet())
-            out.append(e.getKey() + " " + e.getValue() + "\n");
+        for (int i = 0; i < colorNum; i++)
+            out.append(i + " (" + colorTable[i * 3] + ", "
+                    + colorTable[i * 3 + 1] + ", "
+                    + colorTable[i * 3 + 2] + ", "
+                    + ")\n");
         return out.toString();
     }
 
@@ -138,62 +140,11 @@ public class VlyObject {
         return this.voxelNum;
     }
 
-//    /**
-//     * Builds the mesh representation of the parsed object.
-//     */
-//    private void buildMesh() {
-//        ArrayList<float[]> vertices = new ArrayList<>();
-//        ArrayList<int[]> indices = new ArrayList<>();
-//
-//        // Create the faces
-//        for (int v = 0; v < voxelNum; v++) {
-//            int[] voxel = voxels[v];
-//            Color voxelColor = colorMap.get(voxels[v][3]);
-//            ArrayList<float[]> voxelVertices = new ArrayList<>();
-//            ArrayList<int[]> voxelIndices = new ArrayList<>();
-//
-//
-//            // add vertices
-//            for (int x = voxel[0]; x < (voxel[0] + 1); x++)
-//                for (int y = voxel[1]; y < (voxel[1] + 1); y++)
-//                    for (int z = voxel[2]; z < (voxel[2] + 1); z++) {
-//                        float[] vertex = new float[]{x, y, z};
-//                        if (!vertices.contains(vertex)) {
-//                            vertices.add(vertex);
-//                            voxelVertices.add(vertex);
-//                        }
-//                    }
-//
-//            // add faces for the current voxel
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(1)), vertices.indexOf(voxelVertices.get(3)), vertices.indexOf(voxelVertices.get(7))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(1)), vertices.indexOf(voxelVertices.get(7)), vertices.indexOf(voxelVertices.get(5))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(2)), vertices.indexOf(voxelVertices.get(6))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(4)), vertices.indexOf(voxelVertices.get(6)), vertices.indexOf(voxelVertices.get(7))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(6)), vertices.indexOf(voxelVertices.get(4))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(4)), vertices.indexOf(voxelVertices.get(7)), vertices.indexOf(voxelVertices.get(5))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(2)), vertices.indexOf(voxelVertices.get(3))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(3)), vertices.indexOf(voxelVertices.get(1))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(1)), vertices.indexOf(voxelVertices.get(5))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(5)), vertices.indexOf(voxelVertices.get(4))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(4)), vertices.indexOf(voxelVertices.get(0)), vertices.indexOf(voxelVertices.get(1))});
-//            voxelIndices.add(new int[]{vertices.indexOf(voxelVertices.get(4)), vertices.indexOf(voxelVertices.get(1)), vertices.indexOf(voxelVertices.get(5))});
-//        }
-//
-//        Log.v("MESH_BUILDER", "Vertices: " + vertices);
-//        Log.v("MESH_BUILDER", "Faces   : " + indices);
-//
-//        // TODO: cull triangles in the same position
-//        // TODO: normalize vertex poses in the float [0-1] range?
-//
-//        // update vertices
-//        this.vertices = new float[3 * vertices.size()];
-//        for (int j = 0; j < vertices.size(); j++)
-//            System.arraycopy(vertices.get(j), 0, this.vertices, j * 3, 3);
-//
-//        // update faces
-//        this.faces = new int[3 * indices.size()];
-//        for (int j = 0; j < indices.size(); j++)
-//            System.arraycopy(indices.get(j), 0, this.faces, j * 3, 3);
-//    }
+    public float[] getColorTable() {
+        return colorTable;
+    }
 
+    public int getColorCount() {
+        return colorNum;
+    }
 }
