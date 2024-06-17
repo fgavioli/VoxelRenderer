@@ -30,16 +30,12 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        //Optional for full screen
         requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags
-                (WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
 
-        //get a reference to the Activity Manager (AM)
         final ActivityManager activityManager =
                 (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        //from the AM we get an object with our mobile device info
         final ConfigurationInfo configurationInfo =
                 activityManager.getDeviceConfigurationInfo();
 
@@ -60,11 +56,12 @@ public class MainActivity extends Activity {
 
         // load model
         VlyObject model = null;
+        String modelName = "monu16";
         try {
-            model = new VlyObject(this.getAssets().open("dragon.vly"));
+            model = new VlyObject(this.getAssets().open(modelName + ".vly"));
             model.parse();
         } catch (IOException e) {
-            e.printStackTrace();
+            Log.v("MAIN","Unable to parse asset " + modelName);
         }
 
         if (model == null)

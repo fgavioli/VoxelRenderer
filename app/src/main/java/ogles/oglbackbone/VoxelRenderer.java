@@ -3,6 +3,7 @@ package ogles.oglbackbone;
 import static android.opengl.GLES20.GL_BACK;
 import static android.opengl.GLES20.GL_CCW;
 import static android.opengl.GLES20.GL_CULL_FACE;
+import static android.opengl.GLES20.GL_CW;
 import static android.opengl.GLES20.GL_GEQUAL;
 import static android.opengl.GLES20.glCullFace;
 import static android.opengl.GLES20.glEnable;
@@ -23,6 +24,7 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -32,6 +34,7 @@ import java.util.Arrays;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
+import ogles.oglbackbone.utils.PlyObject;
 import ogles.oglbackbone.utils.ShaderCompiler;
 import ogles.oglbackbone.utils.VlyObject;
 
@@ -70,8 +73,8 @@ public class VoxelRenderer extends BasicRenderer {
     private static final int[] voxelIndices = {
             0, 1, 2,
             2, 3, 0,
-            4, 5, 6,
-            6, 7, 4,
+            4, 6, 5,
+            6, 4, 7,
             4, 5, 1,
             1, 0, 4,
             6, 7, 3,
@@ -108,10 +111,12 @@ public class VoxelRenderer extends BasicRenderer {
     private float fovHorizontal;
     private float maxHorizontalSize;
     private float aspectRatio;
+    private FloatBuffer MVPBuffer;
 
     public VoxelRenderer(VlyObject obj) {
         super(0.25f, 0.25f, 0.25f, 1);
         this.obj = obj;
+
 
         viewM = new float[16];
         modelM = new float[obj.getVoxelCount()][16];
@@ -229,9 +234,10 @@ public class VoxelRenderer extends BasicRenderer {
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
         aspectRatio = ((float) w) / ((float) (h == 0 ? 1 : h));
+        // TODO: recheck formulas
         fovHorizontal = (float) (2.0 * (1 / Math.tan(Math.tan(fovVertical / 2) * aspectRatio)));
 
-        maxHorizontalSize = Float.max(modelCenter[0], modelCenter[2]);
+        maxHorizontalSize = (float) sqrt(modelCenter[0] * modelCenter[0] + modelCenter[2] * modelCenter[2]);
         float newCameraDistance = (maxHorizontalSize) /
                 (2 * (float)(Math.tan((fovHorizontal * Math.PI / 180) / 2)));
         Log.v("surfaceChanged", "initialized cameraDistance to " + cameraDistance);
@@ -300,6 +306,12 @@ public class VoxelRenderer extends BasicRenderer {
         colorBuffer.put(obj.getVoxelColors());
         colorBuffer.position(0);
 
+        // generate MVP buffer
+        MVPBuffer =
+                ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
+                        .order(ByteOrder.nativeOrder())
+                        .asFloatBuffer();
+
         VBO = new int[4]; //0: vPos, 1: vIndices, 2: vColor, 3: iMVP
         glGenBuffers(4, VBO, 0);
 
@@ -345,10 +357,6 @@ public class VoxelRenderer extends BasicRenderer {
             generateMVPMatrices();
             MVPRegen = false;
         }
-        FloatBuffer MVPBuffer =
-                ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
-                        .order(ByteOrder.nativeOrder())
-                        .asFloatBuffer();
         for (int i = 0; i < obj.getVoxelCount(); i++) {
             MVPBuffer.put(MVP[i]);
         }
