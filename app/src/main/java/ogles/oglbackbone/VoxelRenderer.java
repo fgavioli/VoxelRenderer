@@ -1,9 +1,15 @@
 package ogles.oglbackbone;
 
+import static android.opengl.GLES20.GL_BACK;
+import static android.opengl.GLES20.GL_CCW;
+import static android.opengl.GLES20.GL_CULL_FACE;
+import static android.opengl.GLES20.GL_GEQUAL;
+import static android.opengl.GLES20.glCullFace;
 import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
 import static android.opengl.GLES20.GL_DEPTH_BUFFER_BIT;
 import static android.opengl.GLES20.glClear;
+import static android.opengl.GLES20.glFrontFace;
 import static android.opengl.GLES20.glGenBuffers;
 import static android.opengl.GLES20.glUseProgram;
 
@@ -37,17 +43,14 @@ import static android.opengl.GLES20.GL_STATIC_DRAW;
 import static android.opengl.GLES20.glBindBuffer;
 import static android.opengl.GLES20.glBufferData;
 import static android.opengl.GLES20.glDepthFunc;
-import static android.opengl.GLES20.glDrawElements;
 import static android.opengl.GLES20.glEnableVertexAttribArray;
-import static android.opengl.GLES20.glGenBuffers;
 import static android.opengl.GLES20.glGetUniformLocation;
-import static android.opengl.GLES20.glUniformMatrix4fv;
 import static android.opengl.GLES20.glVertexAttribPointer;
 import static android.opengl.GLES30.glVertexAttribDivisor;
 import static java.lang.Math.cos;
 import static java.lang.Math.sin;
+import static java.lang.Math.sqrt;
 import static java.lang.Math.toRadians;
-
 
 public class VoxelRenderer extends BasicRenderer {
 
@@ -79,6 +82,8 @@ public class VoxelRenderer extends BasicRenderer {
             6, 2, 1
     };
 
+    private static final float fingerToCameraRatio = 0.15f;
+
     private int shaderHandle;
 
     private int colorTableloc;
@@ -96,6 +101,13 @@ public class VoxelRenderer extends BasicRenderer {
     private int viewRotDeg;
     private boolean MVPRegen;
     private float cameraDistance;
+
+    private float currentFingerDistance;
+    private float startingCameraDistance;
+    private final float fovVertical = 45f;
+    private float fovHorizontal;
+    private float maxHorizontalSize;
+    private float aspectRatio;
 
     public VoxelRenderer(VlyObject obj) {
         super(0.25f, 0.25f, 0.25f, 1);
@@ -143,20 +155,45 @@ public class VoxelRenderer extends BasicRenderer {
     public void setContextAndSurface(Context context, GLSurfaceView surface) {
         super.setContextAndSurface(context, surface);
 
-        // TODO: add here the movement listener to change perspective
         this.surface.setOnTouchListener(new View.OnTouchListener() {
             @SuppressLint("ClickableViewAccessibility")
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                if (event.getAction() == MotionEvent.ACTION_UP) {
-                    float xPerc = event.getX() / v.getWidth();
-                    if (xPerc > 0.75)
-                        viewRotDeg = (viewRotDeg + 15) % 360;
-                    else if (xPerc < 0.25)
-                        viewRotDeg = (viewRotDeg - 15) % 360;
-                    Log.v("ROTATOR", "Rotation: " + viewRotDeg);
-                    // regen MVP matrices for the voxels
-                    MVPRegen = true;
+
+                if (event.getPointerCount() == 2) {
+                    float dx = event.getX(0) - event.getX(1);
+                    float dy = event.getY(0) - event.getY(1);
+                    float fingerDistance = (float) sqrt(dx * dx + dy * dy);
+                    switch (event.getActionMasked()) {
+                        case MotionEvent.ACTION_POINTER_DOWN:
+                            // save starting distance
+                            startingCameraDistance = cameraDistance;
+                            currentFingerDistance = fingerDistance;
+                            break;
+
+                        case MotionEvent.ACTION_MOVE:
+                            // update distance based on movement
+                            float deltaFingerDistance = (currentFingerDistance - fingerDistance);
+                            float newCameraDistance = startingCameraDistance + (deltaFingerDistance * fingerToCameraRatio);
+                            updateCameraDistance(newCameraDistance);
+                            MVPRegen = true;
+                            break;
+
+                        default:
+                            break;
+                    }
+                    Log.v("touchListener", "cameraDistance: " + cameraDistance);
+                } else if (event.getPointerCount() == 1) {
+                    if (event.getActionMasked() == MotionEvent.ACTION_UP) {
+                        float xPerc = event.getX() / v.getWidth();
+                        if (xPerc > 0.75) {
+                            viewRotDeg = (viewRotDeg + 15) % 360;
+                            MVPRegen = true;
+                        } else if (xPerc < 0.25) {
+                            viewRotDeg = (viewRotDeg - 15) % 360;
+                            MVPRegen = true;
+                        }
+                    }
                 }
                 return true;
             }
@@ -180,26 +217,37 @@ public class VoxelRenderer extends BasicRenderer {
         }
     }
 
+    private void updateCameraDistance(float newCameraDistance) {
+        Log.v("UCD", "NCD: " + newCameraDistance);
+        cameraDistance = newCameraDistance;
+        float zNear = cameraDistance - maxHorizontalSize;
+        float zFar = cameraDistance + maxHorizontalSize;
+        Matrix.perspectiveM(projM, 0, fovVertical, aspectRatio, zNear, zFar);
+    }
+
     @Override
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
-        float aspect = ((float) w) / ((float) (h == 0 ? 1 : h));
-        float fovVertical = 45f;
-        float fovHorizontal = (float) (2.0 * (1 / Math.tan(Math.tan(fovVertical / 2) * aspect)));
+        aspectRatio = ((float) w) / ((float) (h == 0 ? 1 : h));
+        fovHorizontal = (float) (2.0 * (1 / Math.tan(Math.tan(fovVertical / 2) * aspectRatio)));
 
-        float maxHorizontalSize = Float.max(modelCenter[0], modelCenter[2]);
-        cameraDistance = (maxHorizontalSize) /
+        maxHorizontalSize = Float.max(modelCenter[0], modelCenter[2]);
+        float newCameraDistance = (maxHorizontalSize) /
                 (2 * (float)(Math.tan((fovHorizontal * Math.PI / 180) / 2)));
-        float zNear = cameraDistance - maxHorizontalSize;
-        float zFar = cameraDistance + maxHorizontalSize;
-
-        Matrix.perspectiveM(projM, 0, fovVertical, aspect, zNear, zFar);
+        Log.v("surfaceChanged", "initialized cameraDistance to " + cameraDistance);
+        updateCameraDistance(newCameraDistance);
         MVPRegen = true;
     }
 
     @Override
     public void onSurfaceCreated(GL10 gl10, EGLConfig eglConfig) {
         super.onSurfaceCreated(gl10, eglConfig);
+
+        glEnable(GLES20.GL_DEPTH_TEST);
+
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CCW);
 
         String vertexSrc = "#version 300 es\n" +
                 "\n" +
@@ -286,7 +334,6 @@ public class VoxelRenderer extends BasicRenderer {
     @Override
     public void onDrawFrame(GL10 gl10) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glEnable(GLES20.GL_DEPTH_TEST);
 
         glUseProgram(shaderHandle);
 
