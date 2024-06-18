@@ -228,10 +228,9 @@ public class VoxelRenderer extends BasicRenderer {
     }
 
     private void updateCameraDistance(float newCameraDistance) {
-        Log.v("UCD", "NCD: " + newCameraDistance);
         cameraDistance = newCameraDistance;
-        float zNear = cameraDistance - maxHorizontalSize;
-        float zFar = cameraDistance + maxHorizontalSize;
+        float zNear = cameraDistance - maxHorizontalSize/2;
+        float zFar = cameraDistance + maxHorizontalSize/2;
         Matrix.perspectiveM(projM, 0, fovVertical, aspectRatio, zNear, zFar);
     }
 
@@ -239,13 +238,19 @@ public class VoxelRenderer extends BasicRenderer {
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
         aspectRatio = ((float) w) / ((float) (h == 0 ? 1 : h));
-        // TODO: recheck formulas
-        fovHorizontal = (float) (2.0 * (1 / Math.tan(Math.tan(fovVertical / 2) * aspectRatio)));
+        float fovVerticalRad = (float) (fovVertical * (Math.PI / 180));
+        // hFov = 2 * atan(tan(vFov/2) * AR)
+        fovHorizontal = (float) (2.0 * (Math.atan(Math.tan(fovVerticalRad / 2) * aspectRatio)));
 
-        maxHorizontalSize = (float) sqrt(modelCenter[0] * modelCenter[0] + modelCenter[2] * modelCenter[2]);
-        float newCameraDistance = (maxHorizontalSize) /
-                (2 * (float)(Math.tan((fovHorizontal * Math.PI / 180) / 2)));
-        Log.v("surfaceChanged", "initialized cameraDistance to " + cameraDistance);
+        float modelWidthX = modelCenter[0] * 2;
+        float modelWidthZ = modelCenter[2] * 2;
+        maxHorizontalSize = (float) sqrt((modelWidthX * modelWidthX) + (modelWidthZ * modelWidthZ));
+
+        // camera distance is calculated as the distance at which the frustum plane has a width
+        // equal to the maximum horizontal size of the model.
+        // d = (modelMaxHSize / (2tan(fovHorizontal))) + (maxHorizontalSize / 2)
+        float newCameraDistance =  (float) ((maxHorizontalSize) /
+                (2 * (Math.tan(fovHorizontal / 2)))) + maxHorizontalSize/2;
         updateCameraDistance(newCameraDistance);
         MVPRegen = true;
     }
@@ -255,7 +260,6 @@ public class VoxelRenderer extends BasicRenderer {
         super.onSurfaceCreated(gl10, eglConfig);
 
         glEnable(GLES20.GL_DEPTH_TEST);
-
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         glFrontFace(GL_CCW);
