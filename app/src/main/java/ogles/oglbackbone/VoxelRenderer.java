@@ -292,6 +292,8 @@ public class VoxelRenderer extends BasicRenderer {
                 "    colorOut = vec4(colorTable[voxelColor], 1);\n" +
                 "}\n";
 
+        //TODO: implement lighting
+
         shaderHandle = ShaderCompiler.createProgram(vertexSrc, fragmentSrc);
 
         VAO = new int[1]; // one VAO for voxel vPos
@@ -388,7 +390,7 @@ public class VoxelRenderer extends BasicRenderer {
 
             long gen = SystemClock.elapsedRealtime();
             generateMVPMatrices();
-
+            // TODO: move modelmatrices only once, edit view and projection matrices when needed
             long edit = SystemClock.elapsedRealtime();
             MVPBuffer.clear();
             for (int i = 0; i < obj.getVoxelCount(); i++) {
