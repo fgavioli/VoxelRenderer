@@ -4,24 +4,19 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.ConfigurationInfo;
-import android.content.res.AssetManager;
+import android.graphics.Paint;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Window;
 import android.view.WindowManager;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.Arrays;
 
-import ogles.oglbackbone.BasicRenderer;
 import ogles.oglbackbone.VoxelRenderer;
 import ogles.oglbackbone.utils.VlyObject;
 
-public class MainActivity extends Activity {
+public class RendererActivity extends Activity {
     private GLSurfaceView surface;
     private boolean isSurfaceCreated;
 
@@ -54,9 +49,15 @@ public class MainActivity extends Activity {
         surface.setEGLContextClientVersion(supported);
         surface.setPreserveEGLContextOnPause(true);
 
+        Bundle extras = getIntent().getExtras();
+        String modelName = null;
+        if (extras == null)
+            finish(); // exit
+        else
+            modelName = extras.getString("modelName");
+
         // load model
         VlyObject model = null;
-        String modelName = "monu16";
         try {
             model = new VlyObject(this.getAssets().open(modelName + ".vly"));
             model.parse();
@@ -73,6 +74,7 @@ public class MainActivity extends Activity {
         renderer.setContextAndSurface(this,surface);
         surface.setRenderer(renderer);
         isSurfaceCreated = true;
+
     }
 
     @Override
