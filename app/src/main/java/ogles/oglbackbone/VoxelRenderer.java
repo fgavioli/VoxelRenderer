@@ -185,6 +185,7 @@ public class VoxelRenderer extends BasicRenderer {
                             // update distance based on movement
                             float deltaFingerDistance = (currentFingerDistance - fingerDistance);
                             float newCameraDistance = startingCameraDistance + (deltaFingerDistance * fingerToCameraRatio);
+                            // TODO: limit pinch to zoom
                             updateCameraDistance(newCameraDistance);
                             MVPRegen = true;
                             break;
@@ -275,21 +276,25 @@ public class VoxelRenderer extends BasicRenderer {
                 "    gl_Position = iMVP * vec4(vPos, 1.0);\n" +
                 "    voxelColor = vColor;\n" +
                 "}";
+
         String fragmentSrc = "#version 300 es\n" +
                 "\n" +
                 "precision mediump float;\n" +
                 "\n" +
                 "flat in int voxelColor;\n" +
                 "uniform vec3 colorTable[" + obj.getColorCount() + "];\n" +
+//                "uniform vec3 lightSourcePos;\n" +
                 "out vec4 colorOut;\n" +
                 "\n" +
                 "void main() {\n" +
+//                "vec3 lightDir\n" +
+//                "\n" +
                 "    colorOut = vec4(colorTable[voxelColor], 1);\n" +
                 "}\n";
 
         shaderHandle = ShaderCompiler.createProgram(vertexSrc, fragmentSrc);
 
-        VAO = new int[1]; // one VAO for vPos
+        VAO = new int[1]; // one VAO for voxel vPos
         GLES30.glGenVertexArrays(1, VAO, 0);
 
         // generate vertex buffer
@@ -345,36 +350,16 @@ public class VoxelRenderer extends BasicRenderer {
         glEnableVertexAttribArray(2);
         // Set the attribute divisor to change color every instance
         glVertexAttribDivisor(2, 1);
-        GLES30.glBindVertexArray(0);
 
-        colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
-
-        glDepthFunc(GL_LEQUAL);
-    }
-
-    @Override
-    public void onDrawFrame(GL10 gl10) {
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        glUseProgram(shaderHandle);
-
-        GLES30.glBindVertexArray(VAO[0]);
-
-        // generate MVP buffer
-        if (MVPRegen) {
-            Log.v("MVP", "Refreshing MVP matrices...");
-            generateMVPMatrices();
-            MVPRegen = false;
-        }
+        // bind and fill initial MVP buffer
+        glBindBuffer(GL_ARRAY_BUFFER, VBO[3]);
+        generateMVPMatrices();
         for (int i = 0; i < obj.getVoxelCount(); i++) {
             MVPBuffer.put(MVP[i]);
         }
         MVPBuffer.position(0);
-
-        // bind MVP buffer
-        glBindBuffer(GL_ARRAY_BUFFER, VBO[3]);
-        glBufferData(GL_ARRAY_BUFFER, MVPBuffer.capacity() * 4, MVPBuffer, GL_STATIC_DRAW);
-        // pass 4x4 mat to attrib.
+        glBufferData(GL_ARRAY_BUFFER, MVPBuffer.capacity() * 4, MVPBuffer, GL_DYNAMIC_DRAW);
+        // declare 4x4 mat as vertex attribute
         // Src: https://stackoverflow.com/questions/28595598/glm-mat4x4-to-layout-qualifier
         for (int i = 0; i < 4; i++) {
             glEnableVertexAttribArray(3 + i);
@@ -382,10 +367,51 @@ public class VoxelRenderer extends BasicRenderer {
             glVertexAttribDivisor(3 + i, 1);
         }
 
+        colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
+
+        GLES30.glBindVertexArray(0);
+
+        glDepthFunc(GL_LEQUAL);
+    }
+
+    @Override
+    public void onDrawFrame(GL10 gl10) {
+        long start = SystemClock.elapsedRealtime();
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glUseProgram(shaderHandle);
+        GLES30.glBindVertexArray(VAO[0]);
+
+        // update MVP buffer if needed
+        if (MVPRegen) {
+            Log.v("MVP", "Updating MVP buffer...");
+
+            long gen = SystemClock.elapsedRealtime();
+            generateMVPMatrices();
+
+            long edit = SystemClock.elapsedRealtime();
+            MVPBuffer.clear();
+            for (int i = 0; i < obj.getVoxelCount(); i++) {
+                MVPBuffer.put(MVP[i]);
+            }
+            MVPBuffer.position(0);
+            long copy = SystemClock.elapsedRealtime();
+            glBufferSubData(GL_ARRAY_BUFFER, 0, MVPBuffer.capacity() * 4, MVPBuffer);
+            long sub = SystemClock.elapsedRealtime();
+            float tEdit = edit - gen;
+            float tCopy = copy - edit;
+            float tSub  = sub - copy;
+            Log.v("TIMING", tEdit + " " + tCopy + " " + tSub);
+
+            MVPRegen = false;
+        }
+
         GLES30.glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
 
-        // Draw!
+        // Draw instances
         GLES30.glDrawElementsInstanced(GLES30.GL_TRIANGLES, voxelIndices.length, GLES30.GL_UNSIGNED_INT, 0, obj.getVoxelCount());
+        long end = SystemClock.elapsedRealtime();
+        Log.v("TIMING", "Drawcall: " + (end-start));
 
         GLES30.glBindVertexArray(0);
         glUseProgram(0);

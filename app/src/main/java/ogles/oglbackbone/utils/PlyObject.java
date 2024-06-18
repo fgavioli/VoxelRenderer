@@ -10,8 +10,10 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
-public class PlyObject extends Mesh {
+public class PlyObject {
 
+    private float vertices[];
+    private int faces[];
     private int countVertices;
     private int countFaces;
     private InputStream inputStream;
