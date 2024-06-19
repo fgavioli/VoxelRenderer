@@ -3,10 +3,7 @@ package ogles.oglbackbone;
 import static android.opengl.GLES20.GL_BACK;
 import static android.opengl.GLES20.GL_CCW;
 import static android.opengl.GLES20.GL_CULL_FACE;
-import static android.opengl.GLES20.GL_CW;
 import static android.opengl.GLES20.GL_DYNAMIC_DRAW;
-import static android.opengl.GLES20.GL_GEQUAL;
-import static android.opengl.GLES20.glBufferSubData;
 import static android.opengl.GLES20.glCullFace;
 import static android.opengl.GLES20.glEnable;
 import static android.opengl.GLES20.GL_COLOR_BUFFER_BIT;
@@ -18,8 +15,6 @@ import static android.opengl.GLES20.glUseProgram;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
-import android.graphics.Color;
-import android.graphics.Paint;
 import android.opengl.GLES20;
 import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
@@ -29,7 +24,6 @@ import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
@@ -39,7 +33,6 @@ import java.util.Arrays;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-import ogles.oglbackbone.utils.PlyObject;
 import ogles.oglbackbone.utils.ShaderCompiler;
 import ogles.oglbackbone.utils.VlyObject;
 
@@ -58,6 +51,7 @@ import static android.opengl.GLES30.glVertexAttribDivisor;
 import static java.lang.Math.cos;
 import static java.lang.Math.sin;
 import static java.lang.Math.sqrt;
+import static java.lang.Math.tan;
 import static java.lang.Math.toRadians;
 
 public class VoxelRenderer extends BasicRenderer {
@@ -95,6 +89,7 @@ public class VoxelRenderer extends BasicRenderer {
     private int shaderHandle;
 
     private int colorTableloc;
+    private int VPMatrixLoc;
 
     private int VAO[];
     private int VBO[];
@@ -102,31 +97,30 @@ public class VoxelRenderer extends BasicRenderer {
     private float viewM[];
     private float modelM[][];
     private float projM[];
-    private float MVP[][];
+    private float VP[];
 
     private VlyObject obj;
     private float[] modelCenter;
     private int viewRotDeg;
-    private boolean MVPRegen;
+    private boolean VPRegen;
     private float cameraDistance;
 
     private float currentFingerDistance;
     private float startingCameraDistance;
-    private final float fovVertical = 45f;
-    private float fovHorizontal;
+    private final float fovVerticalDeg = 45f;
+    private float fovHorizontalRad;
     private float maxHorizontalSize;
     private float aspectRatio;
-    private FloatBuffer MVPBuffer;
+    private FloatBuffer modelMatBuffer;
 
     public VoxelRenderer(VlyObject obj) {
         super(0.25f, 0.25f, 0.25f, 1);
         this.obj = obj;
 
-
         viewM = new float[16];
         modelM = new float[obj.getVoxelCount()][16];
         projM = new float[16];
-        MVP = new float[obj.getVoxelCount()][16];
+        VP = new float[16];
         Matrix.setIdentityM(viewM, 0);
         Matrix.setIdentityM(projM, 0);
 
@@ -157,7 +151,7 @@ public class VoxelRenderer extends BasicRenderer {
         }
 
         viewRotDeg = 0;
-        MVPRegen = true;
+        VPRegen = true;
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -185,9 +179,8 @@ public class VoxelRenderer extends BasicRenderer {
                             // update distance based on movement
                             float deltaFingerDistance = (currentFingerDistance - fingerDistance);
                             float newCameraDistance = startingCameraDistance + (deltaFingerDistance * fingerToCameraRatio);
-                            // TODO: limit pinch to zoom
                             updateCameraDistance(newCameraDistance);
-                            MVPRegen = true;
+                            VPRegen = true;
                             break;
 
                         default:
@@ -197,12 +190,12 @@ public class VoxelRenderer extends BasicRenderer {
                 } else if (event.getPointerCount() == 1) {
                     if (event.getActionMasked() == MotionEvent.ACTION_UP) {
                         float xPerc = event.getX() / v.getWidth();
-                        if (xPerc > 0.75) {
+                        if (xPerc > 0.90) {
                             viewRotDeg = (viewRotDeg + 15) % 360;
-                            MVPRegen = true;
-                        } else if (xPerc < 0.25) {
+                            VPRegen = true;
+                        } else if (xPerc < 0.10) {
                             viewRotDeg = (viewRotDeg - 15) % 360;
-                            MVPRegen = true;
+                            VPRegen = true;
                         }
                     }
                 }
@@ -211,9 +204,7 @@ public class VoxelRenderer extends BasicRenderer {
         });
     }
 
-    private void generateMVPMatrices() {
-        float[][] voxelPoses = obj.getVoxelPoses();
-
+    private void generateVPMatrix() {
         float eyeX = (float) (cameraDistance * sin(toRadians(viewRotDeg)));
         float eyeZ = (float) (cameraDistance * cos(toRadians(viewRotDeg)));
 
@@ -221,27 +212,26 @@ public class VoxelRenderer extends BasicRenderer {
                 0f, 0f, 0f,
                 0, 1, 0);
 
-        for (int i = 0; i < voxelPoses.length; i++) {
-            float[] tempM = new float[16];
-            Matrix.multiplyMM(tempM, 0, viewM, 0, modelM[i], 0);
-            Matrix.multiplyMM(MVP[i], 0, projM, 0, tempM, 0);
-        }
+        Matrix.multiplyMM(VP, 0, projM, 0, viewM, 0);
     }
 
     private void updateCameraDistance(float newCameraDistance) {
+        float zNear = newCameraDistance - maxHorizontalSize/2;
+        float zFar = newCameraDistance + maxHorizontalSize/2;
+        float nearFrustumWidth = (float) (2.0f * zNear * tan(fovHorizontalRad)) * aspectRatio;
+        if (zNear < 0 || nearFrustumWidth > maxHorizontalSize * 2)
+            return;
         cameraDistance = newCameraDistance;
-        float zNear = cameraDistance - maxHorizontalSize/2;
-        float zFar = cameraDistance + maxHorizontalSize/2;
-        Matrix.perspectiveM(projM, 0, fovVertical, aspectRatio, zNear, zFar);
+        Matrix.perspectiveM(projM, 0, fovVerticalDeg, aspectRatio, zNear, zFar);
     }
 
     @Override
     public void onSurfaceChanged(GL10 gl10, int w, int h) {
         super.onSurfaceChanged(gl10, w, h);
         aspectRatio = ((float) w) / ((float) (h == 0 ? 1 : h));
-        float fovVerticalRad = (float) (fovVertical * (Math.PI / 180));
+        float fovVerticalRad = (float) (fovVerticalDeg * (Math.PI / 180));
         // hFov = 2 * atan(tan(vFov/2) * AR)
-        fovHorizontal = (float) (2.0 * (Math.atan(Math.tan(fovVerticalRad / 2) * aspectRatio)));
+        fovHorizontalRad = (float) (2.0 * (Math.atan(tan(fovVerticalRad / 2) * aspectRatio)));
 
         float modelWidthX = modelCenter[0] * 2;
         float modelWidthZ = modelCenter[2] * 2;
@@ -251,9 +241,9 @@ public class VoxelRenderer extends BasicRenderer {
         // equal to the maximum horizontal size of the model.
         // d = (modelMaxHSize / (2tan(fovHorizontal))) + (maxHorizontalSize / 2)
         float newCameraDistance =  (float) ((maxHorizontalSize) /
-                (2 * (Math.tan(fovHorizontal / 2)))) + maxHorizontalSize/2;
+                (2 * (tan(fovHorizontalRad / 2)))) + maxHorizontalSize/2;
         updateCameraDistance(newCameraDistance);
-        MVPRegen = true;
+        VPRegen = true;
     }
 
     @Override
@@ -269,10 +259,12 @@ public class VoxelRenderer extends BasicRenderer {
                 "\n" +
                 "layout (location = 1) in vec3 vPos;\n" +
                 "layout (location = 2) in int vColor;\n" +
-                "layout (location = 3) in mat4 iMVP;\n" +
+                "layout (location = 3) in mat4 iMMatrix;\n" +
+                "uniform mat4 VPMatrix;\n" +
                 "flat out int voxelColor;\n" +
                 "\n" +
                 "void main() {\n" +
+                "    mat4 iMVP = VPMatrix * iMMatrix;\n" +
                 "    gl_Position = iMVP * vec4(vPos, 1.0);\n" +
                 "    voxelColor = vColor;\n" +
                 "}";
@@ -283,12 +275,9 @@ public class VoxelRenderer extends BasicRenderer {
                 "\n" +
                 "flat in int voxelColor;\n" +
                 "uniform vec3 colorTable[" + obj.getColorCount() + "];\n" +
-//                "uniform vec3 lightSourcePos;\n" +
                 "out vec4 colorOut;\n" +
                 "\n" +
                 "void main() {\n" +
-//                "vec3 lightDir\n" +
-//                "\n" +
                 "    colorOut = vec4(colorTable[voxelColor], 1);\n" +
                 "}\n";
 
@@ -323,7 +312,7 @@ public class VoxelRenderer extends BasicRenderer {
         colorBuffer.position(0);
 
         // generate MVP buffer
-        MVPBuffer =
+        modelMatBuffer =
                 ByteBuffer.allocateDirect(obj.getVoxelCount() * 16 * 4)
                         .order(ByteOrder.nativeOrder())
                         .asFloatBuffer();
@@ -353,14 +342,13 @@ public class VoxelRenderer extends BasicRenderer {
         // Set the attribute divisor to change color every instance
         glVertexAttribDivisor(2, 1);
 
-        // bind and fill initial MVP buffer
+        // bind model buffer
         glBindBuffer(GL_ARRAY_BUFFER, VBO[3]);
-        generateMVPMatrices();
         for (int i = 0; i < obj.getVoxelCount(); i++) {
-            MVPBuffer.put(MVP[i]);
+            modelMatBuffer.put(modelM[i]);
         }
-        MVPBuffer.position(0);
-        glBufferData(GL_ARRAY_BUFFER, MVPBuffer.capacity() * 4, MVPBuffer, GL_DYNAMIC_DRAW);
+        modelMatBuffer.position(0);
+        glBufferData(GL_ARRAY_BUFFER, modelMatBuffer.capacity() * 4, modelMatBuffer, GL_DYNAMIC_DRAW);
         // declare 4x4 mat as vertex attribute
         // Src: https://stackoverflow.com/questions/28595598/glm-mat4x4-to-layout-qualifier
         for (int i = 0; i < 4; i++) {
@@ -370,7 +358,7 @@ public class VoxelRenderer extends BasicRenderer {
         }
 
         colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
-
+        VPMatrixLoc   = glGetUniformLocation(shaderHandle, "VPMatrix");
         GLES30.glBindVertexArray(0);
 
         glDepthFunc(GL_LEQUAL);
@@ -384,30 +372,14 @@ public class VoxelRenderer extends BasicRenderer {
         glUseProgram(shaderHandle);
         GLES30.glBindVertexArray(VAO[0]);
 
-        // update MVP buffer if needed
-        if (MVPRegen) {
-            Log.v("MVP", "Updating MVP buffer...");
-
-            long gen = SystemClock.elapsedRealtime();
-            generateMVPMatrices();
-            // TODO: move modelmatrices only once, edit view and projection matrices when needed
-            long edit = SystemClock.elapsedRealtime();
-            MVPBuffer.clear();
-            for (int i = 0; i < obj.getVoxelCount(); i++) {
-                MVPBuffer.put(MVP[i]);
-            }
-            MVPBuffer.position(0);
-            long copy = SystemClock.elapsedRealtime();
-            glBufferSubData(GL_ARRAY_BUFFER, 0, MVPBuffer.capacity() * 4, MVPBuffer);
-            long sub = SystemClock.elapsedRealtime();
-            float tEdit = edit - gen;
-            float tCopy = copy - edit;
-            float tSub  = sub - copy;
-            Log.v("TIMING", tEdit + " " + tCopy + " " + tSub);
-
-            MVPRegen = false;
+        // update VP uniform buffer if needed
+        if (VPRegen) {
+            Log.v("VP", "Updating VP buffer...");
+            generateVPMatrix();
+            VPRegen = false;
         }
 
+        GLES30.glUniformMatrix4fv(VPMatrixLoc, 1, false, VP, 0);
         GLES30.glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
 
         // Draw instances
