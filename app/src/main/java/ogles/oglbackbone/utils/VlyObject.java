@@ -12,7 +12,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 
 /**
- * This class represents a 3D object represented as a voxel set
+ * This class represents a 3D object in occupancy grid form.
  */
 public class VlyObject {
 
@@ -20,14 +20,14 @@ public class VlyObject {
     private int voxelNum;
     private int colorNum;
 
-    // Represents each voxel pose as a 4d array (x, y, z)
+    // Represents each voxel pose as a 3d array (x, y, z)
     private float[][] voxel_poses;
-
-    // Represent each voxel color as an index integer
-    private int[] voxel_colors;
 
     // Associates at each index the corresponding RGB color
     private float[] colorTable;
+
+    // Represent each voxel color as an integer index of the color table
+    private int[] voxel_colors;
 
     // object inputStream, used for parsing
     private InputStream inputStream;
