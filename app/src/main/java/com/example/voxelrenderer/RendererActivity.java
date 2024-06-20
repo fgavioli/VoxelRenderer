@@ -15,12 +15,12 @@ import java.io.IOException;
 import ogles.oglbackbone.VoxelRenderer;
 import ogles.oglbackbone.utils.VlyObject;
 
-public class RendererActivity extends Activity {
+public class RendererActivity extends Activity implements Runnable {
 
     private String modelName;
     private GLSurfaceView surface;
     private boolean isSurfaceCreated;
-
+    VoxelRenderer renderer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,25 +56,10 @@ public class RendererActivity extends Activity {
         else
             modelName = extras.getString("modelName");
 
-        // load model
-        VlyObject model = null;
-        try {
-            model = new VlyObject(this.getAssets().open(modelName + ".vly"));
-            model.parse();
-        } catch (IOException e) {
-            Log.v("MAIN","Unable to parse asset " + modelName);
-        }
+        Thread t = new Thread(this);
+        t.start();
 
-        if (model == null) {
-            finish();
-            return;
-        }
-
-        VoxelRenderer renderer = new VoxelRenderer(model);
-        renderer.setContextAndSurface(this,surface);
-        surface.setRenderer(renderer);
-        setContentView(surface);
-        isSurfaceCreated = true;
+        isSurfaceCreated = false;
     }
 
     @Override
@@ -89,5 +74,31 @@ public class RendererActivity extends Activity {
         super.onPause();
         if(isSurfaceCreated)
             surface.onPause();
+    }
+
+    @Override
+    public void run() {
+        // load model
+        VlyObject model = null;
+        try {
+            model = new VlyObject(getAssets().open(modelName + ".vly"));
+            model.parse();
+        } catch (IOException e) {
+            Log.v("MAIN","Unable to parse asset " + modelName);
+        }
+
+        if (model == null) {
+            finish();
+            return;
+        }
+        renderer = new VoxelRenderer(model);
+        renderer.setContextAndSurface(this, surface);
+        surface.setRenderer(renderer);
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                setContentView(surface);
+            }
+        });
     }
 }
