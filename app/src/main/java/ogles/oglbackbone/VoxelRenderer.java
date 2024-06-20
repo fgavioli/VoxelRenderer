@@ -366,15 +366,12 @@ public class VoxelRenderer extends BasicRenderer {
 
     @Override
     public void onDrawFrame(GL10 gl10) {
-        long start = SystemClock.elapsedRealtime();
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(shaderHandle);
         GLES30.glBindVertexArray(VAO[0]);
 
         // update VP uniform buffer if needed
         if (VPRegen) {
-            Log.v("VP", "Updating VP buffer...");
             generateVPMatrix();
             VPRegen = false;
         }
@@ -384,8 +381,6 @@ public class VoxelRenderer extends BasicRenderer {
 
         // Draw instances
         GLES30.glDrawElementsInstanced(GLES30.GL_TRIANGLES, voxelIndices.length, GLES30.GL_UNSIGNED_INT, 0, obj.getVoxelCount());
-        long end = SystemClock.elapsedRealtime();
-        Log.v("TIMING", "Drawcall: " + (end-start));
 
         GLES30.glBindVertexArray(0);
         glUseProgram(0);

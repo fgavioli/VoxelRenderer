@@ -56,6 +56,8 @@ public class RendererActivity extends Activity {
         else
             modelName = extras.getString("modelName");
 
+        // TODO: show a loading dialog here
+
         // load model
         VlyObject model = null;
         try {
@@ -69,6 +71,8 @@ public class RendererActivity extends Activity {
             return;
 
         VoxelRenderer renderer = new VoxelRenderer(model);
+
+        // TODO: remove the loading dialog here
 
         setContentView(surface);
         renderer.setContextAndSurface(this,surface);
