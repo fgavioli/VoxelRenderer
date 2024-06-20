@@ -294,6 +294,7 @@ public class VoxelRenderer extends BasicRenderer {
                 "}\n";
 
         shaderHandle = ShaderCompiler.createProgram(vertexSrc, fragmentSrc);
+        glUseProgram(shaderHandle);
 
         VAO = new int[1]; // one VAO for voxel vPos
         glGenVertexArrays(1, VAO, 0);
@@ -366,9 +367,12 @@ public class VoxelRenderer extends BasicRenderer {
             glVertexAttribDivisor(3 + i, 1);
         }
 
-        colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
         VPMatrixLoc   = glGetUniformLocation(shaderHandle, "VPMatrix");
+        colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
+        glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
+
         glBindVertexArray(0);
+        glUseProgram(0);
     }
 
     @Override
@@ -380,11 +384,9 @@ public class VoxelRenderer extends BasicRenderer {
         // update VP uniform buffer if needed
         if (VPRegen) {
             generateVPMatrix();
+            glUniformMatrix4fv(VPMatrixLoc, 1, false, VP, 0);
             VPRegen = false;
         }
-
-        glUniformMatrix4fv(VPMatrixLoc, 1, false, VP, 0);
-        glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
 
         // Draw instances
         glDrawElementsInstanced(GL_TRIANGLES, voxelIndices.length, GL_UNSIGNED_INT, 0, obj.getVoxelCount());
