@@ -4,7 +4,6 @@ import android.app.Activity;
 import android.app.ActivityManager;
 import android.content.Context;
 import android.content.pm.ConfigurationInfo;
-import android.graphics.Paint;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.util.Log;
@@ -17,6 +16,8 @@ import ogles.oglbackbone.VoxelRenderer;
 import ogles.oglbackbone.utils.VlyObject;
 
 public class RendererActivity extends Activity {
+
+    private String modelName;
     private GLSurfaceView surface;
     private boolean isSurfaceCreated;
 
@@ -50,13 +51,10 @@ public class RendererActivity extends Activity {
         surface.setPreserveEGLContextOnPause(true);
 
         Bundle extras = getIntent().getExtras();
-        String modelName = null;
         if (extras == null)
             finish(); // exit
         else
             modelName = extras.getString("modelName");
-
-        // TODO: show a loading dialog here
 
         // load model
         VlyObject model = null;
@@ -67,18 +65,16 @@ public class RendererActivity extends Activity {
             Log.v("MAIN","Unable to parse asset " + modelName);
         }
 
-        if (model == null)
+        if (model == null) {
+            finish();
             return;
+        }
 
         VoxelRenderer renderer = new VoxelRenderer(model);
-
-        // TODO: remove the loading dialog here
-
-        setContentView(surface);
         renderer.setContextAndSurface(this,surface);
         surface.setRenderer(renderer);
+        setContentView(surface);
         isSurfaceCreated = true;
-
     }
 
     @Override

@@ -16,10 +16,8 @@ import static android.opengl.GLES20.glUseProgram;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.opengl.GLES20;
-import android.opengl.GLES30;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
-import android.os.SystemClock;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
@@ -47,6 +45,7 @@ import static android.opengl.GLES20.glDepthFunc;
 import static android.opengl.GLES20.glEnableVertexAttribArray;
 import static android.opengl.GLES20.glGetUniformLocation;
 import static android.opengl.GLES20.glVertexAttribPointer;
+import static android.opengl.GLES30.*;
 import static android.opengl.GLES30.glVertexAttribDivisor;
 import static java.lang.Math.cos;
 import static java.lang.Math.sin;
@@ -58,33 +57,33 @@ public class VoxelRenderer extends BasicRenderer {
 
     // vertices for the generic cubical voxel, centered at (0, 0, 0)
     private static final float[] voxelVertices = {
-            -0.5f, -0.5f, -0.5f,
-            0.5f, -0.5f, -0.5f,
-            0.5f,  0.5f, -0.5f,
-            -0.5f,  0.5f, -0.5f,
-            -0.5f, -0.5f,  0.5f,
-            0.5f, -0.5f,  0.5f,
-            0.5f,  0.5f,  0.5f,
-            -0.5f,  0.5f,  0.5f
+            -0.5f, -0.5f, -0.5f, // front, bottom left
+            0.5f, -0.5f, -0.5f,  // front, bottom right
+            0.5f,  0.5f, -0.5f,  // front, top right
+            -0.5f,  0.5f, -0.5f, // front, top left
+            -0.5f, -0.5f,  0.5f, // back, bottom left
+            0.5f, -0.5f,  0.5f,  // back, bottom right
+            0.5f,  0.5f,  0.5f,  // back, top right
+            -0.5f,  0.5f,  0.5f  // back, top left
     };
 
     // triangular faces for the generic voxel instance
     private static final int[] voxelIndices = {
-            0, 1, 2,
-            2, 3, 0,
-            4, 6, 5,
-            6, 4, 7,
-            4, 5, 1,
-            1, 0, 4,
-            6, 7, 3,
-            3, 2, 6,
-            4, 0, 3,
-            3, 7, 4,
-            1, 5, 6,
-            6, 2, 1
+            0, 1, 2,             // front
+            2, 3, 0,             // front
+            4, 6, 5,             // back
+            6, 4, 7,             // back
+            4, 5, 1,             // bottom
+            1, 0, 4,             // bottom
+            6, 7, 3,             // top
+            3, 2, 6,             // top
+            4, 0, 3,             // left
+            3, 7, 4,             // left
+            1, 5, 6,             // right
+            6, 2, 1              // right
     };
 
-    private static final float fingerToCameraRatio = 0.15f;
+    private static final float fingerToCameraRatio = 0.10f;
 
     private int shaderHandle;
 
@@ -190,10 +189,10 @@ public class VoxelRenderer extends BasicRenderer {
                 } else if (event.getPointerCount() == 1) {
                     if (event.getActionMasked() == MotionEvent.ACTION_UP) {
                         float xPerc = event.getX() / v.getWidth();
-                        if (xPerc > 0.90) {
+                        if (xPerc > 0.85) {
                             viewRotDeg = (viewRotDeg + 15) % 360;
                             VPRegen = true;
-                        } else if (xPerc < 0.10) {
+                        } else if (xPerc < 0.15) {
                             viewRotDeg = (viewRotDeg - 15) % 360;
                             VPRegen = true;
                         }
@@ -286,7 +285,7 @@ public class VoxelRenderer extends BasicRenderer {
         shaderHandle = ShaderCompiler.createProgram(vertexSrc, fragmentSrc);
 
         VAO = new int[1]; // one VAO for voxel vPos
-        GLES30.glGenVertexArrays(1, VAO, 0);
+        glGenVertexArrays(1, VAO, 0);
 
         // generate vertex buffer
         FloatBuffer vertexData =
@@ -320,7 +319,7 @@ public class VoxelRenderer extends BasicRenderer {
         VBO = new int[4]; //0: vPos, 1: vIndices, 2: vColor, 3: iMVP
         glGenBuffers(4, VBO, 0);
 
-        GLES30.glBindVertexArray(VAO[0]);
+        glBindVertexArray(VAO[0]);
 
         // bind vertices pose buffer
         glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
@@ -359,7 +358,7 @@ public class VoxelRenderer extends BasicRenderer {
 
         colorTableloc = glGetUniformLocation(shaderHandle, "colorTable");
         VPMatrixLoc   = glGetUniformLocation(shaderHandle, "VPMatrix");
-        GLES30.glBindVertexArray(0);
+        glBindVertexArray(0);
 
         glDepthFunc(GL_LEQUAL);
     }
@@ -368,7 +367,7 @@ public class VoxelRenderer extends BasicRenderer {
     public void onDrawFrame(GL10 gl10) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glUseProgram(shaderHandle);
-        GLES30.glBindVertexArray(VAO[0]);
+        glBindVertexArray(VAO[0]);
 
         // update VP uniform buffer if needed
         if (VPRegen) {
@@ -376,13 +375,13 @@ public class VoxelRenderer extends BasicRenderer {
             VPRegen = false;
         }
 
-        GLES30.glUniformMatrix4fv(VPMatrixLoc, 1, false, VP, 0);
-        GLES30.glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
+        glUniformMatrix4fv(VPMatrixLoc, 1, false, VP, 0);
+        glUniform3fv(colorTableloc, obj.getColorCount(), obj.getColorTable(), 0);
 
         // Draw instances
-        GLES30.glDrawElementsInstanced(GLES30.GL_TRIANGLES, voxelIndices.length, GLES30.GL_UNSIGNED_INT, 0, obj.getVoxelCount());
+        glDrawElementsInstanced(GL_TRIANGLES, voxelIndices.length, GL_UNSIGNED_INT, 0, obj.getVoxelCount());
 
-        GLES30.glBindVertexArray(0);
+        glBindVertexArray(0);
         glUseProgram(0);
     }
 }

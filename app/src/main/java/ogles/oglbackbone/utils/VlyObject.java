@@ -56,7 +56,6 @@ public class VlyObject {
                 for (int i = 0; i < sizes.length; i++) {
                     gridSize[i] = Integer.parseInt(sizes[i]);
                 }
-                Log.v("VLY_PARSER", "Grid size: " + gridSize[0] + " " + gridSize[1] + " " + gridSize[2] + " ");
             } else if (s.contains("voxel_num: ")) {
                 // parse voxel count
                 int index = s.lastIndexOf("voxel_num: ") + "voxel_num: ".length();
@@ -64,7 +63,6 @@ public class VlyObject {
                 // allocate buffers
                 voxel_poses = new float[voxelNum][3];
                 voxel_colors = new int[voxelNum];
-                Log.v("VLY_PARSER", "Voxel count: " + voxelNum);
             } else {
                 if (voxelIndex < voxelNum) {
                     // parse voxel
@@ -73,7 +71,6 @@ public class VlyObject {
                     voxel_poses[voxelIndex][1] = Float.parseFloat(v[2]);
                     voxel_poses[voxelIndex][2] = Float.parseFloat(v[1]);
                     voxel_colors[voxelIndex] = Integer.parseInt(v[3]);
-                    Log.v("VLY_PARSER", "Parsed voxel #" + voxelIndex + " (" + Arrays.toString(voxel_poses[voxelIndex]) + ") - (color: " + voxel_colors[voxelIndex] + ")");
                 } else {
                     if (colorTable == null)
                     {
@@ -89,9 +86,6 @@ public class VlyObject {
                     for (int i = 0; i < 3; i++) {
                         colorTable[colorNum * 3 + i] = Float.parseFloat(color[i + 1]) / 255;
                     }
-                    Log.v("VLY_PARSER", "Parsed color #" + (voxelIndex - voxelNum) + " - " + colorTable[colorNum * 3]
-                            + ", " + colorTable[colorNum * 3 + 1]
-                            + ", " + colorTable[colorNum * 3 + 2]);
                     colorNum++;
                 }
                 voxelIndex++;
@@ -100,7 +94,6 @@ public class VlyObject {
 
         reader.close();
         inputStream.close();
-//        buildMesh();
     }
 
     @Override
